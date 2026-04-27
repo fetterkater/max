@@ -274,19 +274,14 @@ return next;
 }, []);
 
 const callClaude = useCallback(async (system, content) => {
-const res = await fetch("/api/claude", {
+const res = await fetch(”/api/claude”, {
 method:“POST”,
 headers:{“Content-Type”:“application/json”},
-body:JSON.stringify({
-model:“claude-sonnet-4-5”,
-max_tokens:600,
-system,
-messages:[{role:“user”,content}],
-}),
+body:JSON.stringify({ system, prompt: content }),
 });
 const data = await res.json();
-if (data.error) throw new Error(data.error.message);
-return (data.content||[]).map(b => b.text??””).join(””);
+if (!res.ok) throw new Error(data.error || “API Fehler”);
+return data.text ?? “”;
 }, []);
 
 async function submitCheckin() {
