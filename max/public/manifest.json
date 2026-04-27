@@ -1,14 +1,22 @@
 {
-  "name": "Recovery OS",
-  "short_name": "Recovery",
-  "description": "Täglicher Supplement-Tracker & Check-in",
+  "name": "BALANX",
+  "short_name": "BALANX",
+  "description": "Dein persönliches Recovery-System",
   "start_url": "/",
   "display": "standalone",
+  "background_color": "#080810",
+  "theme_color": "#b44dff",
   "orientation": "portrait",
-  "background_color": "#f0ede8",
-  "theme_color": "#1a1a1a",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
   ]
 }
