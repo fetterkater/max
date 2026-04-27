@@ -1,18 +1,31 @@
-import { NextRequest, NextResponse } from "next/server";
+export async function POST(req: Request) {
+  try {
+    const { prompt } = await req.json();
 
-export async function POST(req: NextRequest) {
-  const body = await req.json();
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY!,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-latest",
+        max_tokens: 300,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY!,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify(body),
-  });
+    const data = await res.json();
+    if (!res.ok) {
+      return Response.json({ error: data.error?.message }, { status: 500 });
+    }
 
-  const data = await res.json();
-  return NextResponse.json(data);
+    const text =
+      data.content?.map((b:any)=>b.text).join("") || "Keine Antwort";
+
+    return Response.json({ text });
+  } catch (e:any) {
+    return Response.json({ error: e.message }, { status: 500 });
+  }
 }
