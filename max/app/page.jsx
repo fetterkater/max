@@ -648,7 +648,7 @@ function MilestoneCard({soberDays,name,S}) {
 // ─── Relapse Review ───────────────────────────────────────────────────────────
 const RELAPSE_FIELDS = [
   {id:"trigger",    label:"Trigger",            placeholder:"Was hat es ausgelöst?",             rows:2},
-  {id:"thought",    label:"Gedanke davor",       placeholder:"z.B. „nur einmal", "ich verdiene es:" rows:2},
+  {id:"thought",    label:"Gedanke davor",       placeholder:"z.B. nur einmal, ich verdien's…",rows:2},
   {id:"emotion",    label:"Emotion",             placeholder:"Was hast du gefühlt?",              rows:1},
   {id:"location",   label:"Ort",                placeholder:"Wo warst du?",                      rows:1},
   {id:"people",     label:"Personen",            placeholder:"Allein oder mit wem?",              rows:1},
@@ -1974,8 +1974,143 @@ export default function App() {
     haptic.medium();
     const rows=checkins.map(c=>{const d=new Date(c.date);return[fmtDate(c.date),d.toLocaleDateString("de-DE",{weekday:"long"}),c.mood,c.urge,c.sleep||"",c.energy||"",c.risk||"",c.suppsDone,`"${c.trigger.replace(/"/g,'""')}"`].join(",");});
     const csv="Datum,Wochentag,Stimmung,Drang,Schlaf,Energie,Risiko,Supplements,Trigger\n"+rows.join("\n");
-    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:"recovery-export.csv"});
+    dl(csv,"text/csv","recovery-export.csv");
+  }
+
+  function exportJSON(){
+    haptic.medium();
+    const backup={
+      version:2,
+      exportedAt:new Date().toISOString(),
+      profile,
+      checkins,
+      relapses,
+      journal:JSON.parse(ls.get("journal","[]")),
+      plans:JSON.parse(ls.get("wenn_dann","[]")),
+      values:JSON.parse(ls.get("user_values","[]")),
+      supplements:JSON.parse(ls.get("supplements","null")),
+    };
+    dl(JSON.stringify(backup,null,2),"application/json",`balanx-backup-${new Date().toISOString().split("T")[0]}.json`);
+  }
+
+  function dl(content, type, filename){
+    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([content],{type})),download:filename});
     document.body.appendChild(a);a.click();document.body.removeChild(a);
+  }
+
+  function importJSON(file){
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const data=JSON.parse(e.target.result);
+        if(!data.checkins) throw new Error("Ungültiges Format");
+        if(data.profile)     { setProfile(data.profile);    ls.set("profile",JSON.stringify(data.profile)); }
+        if(data.checkins)    { setCheckins(data.checkins);  ls.set("checkins",JSON.stringify(data.checkins)); }
+        if(data.relapses)    { setRelapses(data.relapses);  ls.set("relapses",JSON.stringify(data.relapses)); }
+        if(data.journal)       ls.set("journal",JSON.stringify(data.journal));
+        if(data.plans)         ls.set("wenn_dann",JSON.stringify(data.plans));
+        if(data.values)      { setValues(data.values);      ls.set("user_values",JSON.stringify(data.values)); }
+        if(data.supplements) { setSupplements(data.supplements); ls.set("supplements",JSON.stringify(data.supplements)); }
+        haptic.success();
+        alert("Backup erfolgreich importiert ✓");
+      }catch(err){ haptic.error(); alert("Fehler beim Import: "+err.message); }
+    };
+    reader.readAsText(file);
+  }
+
+  function exportPDF(){
+    haptic.medium();
+    const soberDays=calcSoberDays(checkins,relapses);
+    const avgMoodV=checkins.length?(checkins.reduce((s,c)=>s+c.mood,0)/checkins.length).toFixed(1):"–";
+    const avgUrgeV=checkins.length?(checkins.reduce((s,c)=>s+c.urge,0)/checkins.length).toFixed(1):"–";
+    const avgSleep=checkins.filter(c=>c.sleep).length?(checkins.filter(c=>c.sleep).reduce((s,c)=>s+c.sleep,0)/checkins.filter(c=>c.sleep).length).toFixed(1):"–";
+    const highRiskV=checkins.filter(c=>c.risk==="hoch").length;
+    const last7=checkins.filter(c=>(new Date()-new Date(c.date))<7*24*60*60*1000);
+    const recentRows=checkins.slice(-14).reverse();
+
+    const html=`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<title>BALANX Report — ${profile.name||"Recovery"}</title>
+<style>
+  body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#222;margin:40px;line-height:1.5}
+  h1{font-size:22px;font-weight:900;margin-bottom:4px;color:#111}
+  h2{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;margin:24px 0 8px;color:#333;border-bottom:1px solid #ddd;padding-bottom:4px}
+  .meta{color:#888;font-size:10px;margin-bottom:28px}
+  .stats{display:flex;gap:20px;margin-bottom:20px;flex-wrap:wrap}
+  .stat{background:#f7f7f7;border-radius:8px;padding:12px 18px;min-width:90px}
+  .stat .val{font-size:22px;font-weight:900;color:#222}
+  .stat .lbl{font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:#999;margin-top:2px}
+  table{width:100%;border-collapse:collapse;font-size:10px}
+  th{background:#f0f0f0;padding:6px 8px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:#666}
+  td{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top}
+  tr:nth-child(even) td{background:#fafafa}
+  .risk-hoch{color:#e53e3e;font-weight:700}
+  .risk-mittel{color:#d69e2e;font-weight:700}
+  .risk-niedrig{color:#38a169;font-weight:700}
+  .identity{font-style:italic;color:#555;margin:8px 0 24px;font-size:12px}
+  .footer{margin-top:40px;padding-top:12px;border-top:1px solid #eee;font-size:9px;color:#aaa}
+  @media print{body{margin:20px}@page{margin:1.5cm}}
+</style></head><body>
+<h1>BALANX Recovery Report</h1>
+<div class="meta">
+  ${profile.name||"Anonym"} · Erstellt am ${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
+  ${soberDays>0?` · ${soberDays} Tage nüchtern`:""}
+</div>
+${profile.identity?`<p class="identity">„${profile.identity}"</p>`:""}
+
+<h2>Statistik Gesamt</h2>
+<div class="stats">
+  <div class="stat"><div class="val">${checkins.length}</div><div class="lbl">Check-ins</div></div>
+  <div class="stat"><div class="val">${avgMoodV}</div><div class="lbl">Ø Stimmung</div></div>
+  <div class="stat"><div class="val">${avgUrgeV}</div><div class="lbl">Ø Drang</div></div>
+  <div class="stat"><div class="val">${avgSleep}h</div><div class="lbl">Ø Schlaf</div></div>
+  <div class="stat"><div class="val">${highRiskV}</div><div class="lbl">Hoch-Risiko</div></div>
+  <div class="stat"><div class="val">${relapses.length}</div><div class="lbl">Rückfälle</div></div>
+  <div class="stat"><div class="val">${soberDays}</div><div class="lbl">Nüchtern-Tage</div></div>
+</div>
+
+<h2>Letzte 7 Tage (${last7.length} Einträge)</h2>
+${last7.length?`
+<div class="stats">
+  <div class="stat"><div class="val">${last7.length}</div><div class="lbl">Check-ins</div></div>
+  <div class="stat"><div class="val">${(last7.reduce((s,c)=>s+c.mood,0)/last7.length).toFixed(1)}</div><div class="lbl">Ø Stimmung</div></div>
+  <div class="stat"><div class="val">${(last7.reduce((s,c)=>s+c.urge,0)/last7.length).toFixed(1)}</div><div class="lbl">Ø Drang</div></div>
+  <div class="stat"><div class="val">${last7.filter(c=>c.risk==="hoch").length}</div><div class="lbl">Hoch-Risiko</div></div>
+</div>`:"<p style='color:#999'>Keine Einträge diese Woche.</p>"}
+
+<h2>Check-in Verlauf (letzte ${recentRows.length} Einträge)</h2>
+${recentRows.length?`<table>
+  <tr><th>Datum</th><th>Stimmung</th><th>Drang</th><th>Schlaf</th><th>Risiko</th><th>Supps</th><th>Trigger</th></tr>
+  ${recentRows.map(c=>`<tr>
+    <td>${fmtDate(c.date)}</td>
+    <td>${c.mood}/10</td>
+    <td>${c.urge}/10</td>
+    <td>${c.sleep?c.sleep+"h":"–"}</td>
+    <td class="risk-${c.risk||"none"}">${c.risk||"–"}</td>
+    <td>${c.suppsDone||0}</td>
+    <td>${(c.trigger||"").substring(0,60)}${(c.trigger||"").length>60?"…":""}</td>
+  </tr>`).join("")}
+</table>`:"<p style='color:#999'>Keine Daten.</p>"}
+
+${relapses.length?`
+<h2>Rückfall-Protokoll (${relapses.length} Einträge)</h2>
+<table>
+  <tr><th>Datum</th><th>Trigger</th><th>Emotion</th><th>Ort</th></tr>
+  ${relapses.map(r=>`<tr>
+    <td>${fmtDate(r.date)}</td>
+    <td>${(r.form?.trigger||"").substring(0,50)}</td>
+    <td>${r.form?.emotion||"–"}</td>
+    <td>${r.form?.location||"–"}</td>
+  </tr>`).join("")}
+</table>`:""}
+
+<div class="footer">
+  Generiert mit BALANX · Vertraulich · Nur für persönlichen oder therapeutischen Gebrauch
+</div>
+</body></html>`;
+
+    const w=window.open("","_blank");
+    if(w){ w.document.write(html); w.document.close(); setTimeout(()=>w.print(),500); }
   }
 
   const chartData=checkins.slice(-14).map(c=>({date:fmtDate(c.date),Stimmung:c.mood,Drang:c.urge}));
@@ -2300,10 +2435,39 @@ export default function App() {
                 </NeonCard>;
               })}
 
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
-                <button onPointerDown={()=>haptic.light()} onClick={exportCSV} style={{padding:"13px",background:"transparent",border:`1px solid ${S.border}`,borderRadius:10,fontSize:9,fontWeight:800,cursor:"pointer",color:S.muted,fontFamily:"inherit",letterSpacing:"0.1em",textTransform:"uppercase"}}>▼ CSV Export</button>
+              {/* Export Panel */}
+              <NeonCard S={S} style={{marginBottom:10}}>
+                <div style={{fontSize:9,fontWeight:700,color:S.muted,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:12}}>Export & Backup</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                  <button onPointerDown={()=>haptic.light()} onClick={exportCSV}
+                    style={{padding:"12px 8px",background:"transparent",border:`1px solid ${S.border}`,borderRadius:10,fontSize:9,fontWeight:800,cursor:"pointer",color:S.muted,fontFamily:"inherit",letterSpacing:"0.08em",textTransform:"uppercase",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:14}}>▼</span>CSV
+                    <span style={{fontSize:8,color:S.muted,fontWeight:400}}>Tabelle</span>
+                  </button>
+                  <button onPointerDown={()=>haptic.light()} onClick={exportPDF}
+                    style={{padding:"12px 8px",background:`${S.cyan}09`,border:`1px solid ${S.cyan}44`,borderRadius:10,fontSize:9,fontWeight:800,cursor:"pointer",color:S.cyan,fontFamily:"inherit",letterSpacing:"0.08em",textTransform:"uppercase",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:14}}>⎙</span>PDF
+                    <span style={{fontSize:8,color:S.muted,fontWeight:400}}>Therapie-Report</span>
+                  </button>
+                  <button onPointerDown={()=>haptic.light()} onClick={exportJSON}
+                    style={{padding:"12px 8px",background:`${S.success}09`,border:`1px solid ${S.success}44`,borderRadius:10,fontSize:9,fontWeight:800,cursor:"pointer",color:S.success,fontFamily:"inherit",letterSpacing:"0.08em",textTransform:"uppercase",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:14}}>↓</span>Backup
+                    <span style={{fontSize:8,color:S.muted,fontWeight:400}}>JSON (alle Daten)</span>
+                  </button>
+                  <label style={{padding:"12px 8px",background:`${S.gold}09`,border:`1px solid ${S.gold}44`,borderRadius:10,fontSize:9,fontWeight:800,cursor:"pointer",color:S.gold,fontFamily:"inherit",letterSpacing:"0.08em",textTransform:"uppercase",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:14}}>↑</span>Restore
+                    <span style={{fontSize:8,color:S.muted,fontWeight:400}}>JSON importieren</span>
+                    <input type="file" accept=".json" onChange={e=>importJSON(e.target.files?.[0])} style={{display:"none"}}/>
+                  </label>
+                </div>
+                <div style={{fontSize:9,color:S.muted,lineHeight:1.6}}>
+                  Backup enthält: Check-ins, Journal, Pläne, Rückfälle, Profil, Supplements.
+                </div>
+              </NeonCard>
+
+              <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8,marginTop:4}}>
                 <button onPointerDown={()=>haptic.light()} onClick={notifStatus==="granted"?()=>setShowNotifSettings(s=>!s):async()=>{const p=await Notification.requestPermission();if(p==="granted"){setNotifStatus("granted");setShowNotifSettings(true);}else setNotifStatus("denied");}} disabled={notifStatus==="denied"} style={{padding:"13px",background:notifStatus==="granted"?S.neonGlow:"transparent",border:`1px solid ${notifStatus==="granted"?S.neonBorder:S.border}`,borderRadius:10,fontSize:9,fontWeight:800,cursor:"pointer",color:notifStatus==="granted"?S.neon:S.muted,fontFamily:"inherit",letterSpacing:"0.1em",textTransform:"uppercase"}}>
-                  {notifStatus==="granted"?"◎ Zeiten":"◎ Reminder"}
+                  {notifStatus==="granted"?"◎ Erinnerungs-Zeiten":"◎ Erinnerungen aktivieren"}
                 </button>
               </div>
               {notifStatus==="denied"&&<div style={{fontSize:9,color:S.danger,textAlign:"center",marginTop:8}}>Benachrichtigungen blockiert.</div>}
