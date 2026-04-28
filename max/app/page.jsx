@@ -648,7 +648,7 @@ function MilestoneCard({soberDays,name,S}) {
 // ─── Relapse Review ───────────────────────────────────────────────────────────
 const RELAPSE_FIELDS = [
   {id:"trigger",    label:"Trigger",            placeholder:"Was hat es ausgelöst?",             rows:2},
-  {id:"thought",    label:"Gedanke davor",       placeholder:"z.B. „nur einmal", „ich verdien's"…",rows:2},
+  {id:"thought",    label:"Gedanke davor",       placeholder:"z.B. „nur einmal", "ich verdiene es:" rows:2},
   {id:"emotion",    label:"Emotion",             placeholder:"Was hast du gefühlt?",              rows:1},
   {id:"location",   label:"Ort",                placeholder:"Wo warst du?",                      rows:1},
   {id:"people",     label:"Personen",            placeholder:"Allein oder mit wem?",              rows:1},
