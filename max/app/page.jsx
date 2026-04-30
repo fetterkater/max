@@ -355,6 +355,147 @@ function Onboarding({onDone}) {
   );
 }
 
+// ─── Pläne Editor (no prompt() — iOS safe) ───────────────────────────────────
+function PlaeneEditor({plans,setPlans,save,S}) {
+  const [adding,setAdding]=useState(false);
+  const [form,setForm]=useState({wenn:"",dann:""});
+  const SUGGESTIONS=[["Einsamkeit","Freund anrufen oder anschreiben"],["Suchtdruck","Kalt duschen + 10 Min draußen"],["Stress nach Arbeit","Musik an, 5 Min rausgehen"],["Langeweile abends","Sport oder konkretes Hobby"]];
+  function add(){
+    if(!form.wenn.trim()||!form.dann.trim())return;
+    haptic.s();
+    const n=[...plans,{id:Date.now(),...form}];
+    setPlans(n);save("wenn_dann",n);
+    setForm({wenn:"",dann:""});setAdding(false);
+  }
+  function remove(id){haptic.l();const n=plans.filter(p=>p.id!==id);setPlans(n);save("wenn_dann",n);}
+  return<div>
+    {plans.length===0&&!adding&&(
+      <Card S={S} style={{marginBottom:12}}>
+        <div style={{fontSize:9,color:S.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:8}}>Vorschläge</div>
+        {SUGGESTIONS.map(([w,d],i)=>(
+          <div key={i} onPointerDown={()=>haptic.l()} onClick={()=>{const n=[...plans,{id:Date.now(),wenn:w,dann:d}];setPlans(n);save("wenn_dann",n);}}
+            style={{display:"flex",gap:8,padding:"9px 0",borderBottom:i<SUGGESTIONS.length-1?`1px solid ${S.border}`:"none",cursor:"pointer"}}>
+            <span style={{fontSize:11,color:S.cyan}}>Wenn {w}</span>
+            <span style={{fontSize:11,color:S.muted}}>→</span>
+            <span style={{fontSize:11,color:S.text}}>{d}</span>
+          </div>
+        ))}
+      </Card>
+    )}
+    {plans.map(p=>(
+      <Card key={p.id} S={S} glow style={{marginBottom:8,padding:"11px 14px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{flex:1,fontSize:11,lineHeight:1.6}}>
+            <span style={{color:S.muted,fontSize:9,textTransform:"uppercase"}}>Wenn </span>
+            <span style={{color:S.cyan,fontWeight:700}}>{p.wenn}</span>
+            <span style={{color:S.muted}}> → </span>
+            <span style={{color:S.text,fontWeight:700}}>{p.dann}</span>
+          </div>
+          <button onPointerDown={()=>haptic.l()} onClick={()=>remove(p.id)}
+            style={{width:24,height:24,borderRadius:5,border:"1px solid rgba(255,77,109,0.3)",background:"rgba(255,77,109,0.08)",color:S.danger,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+        </div>
+      </Card>
+    ))}
+    {adding?(
+      <Card S={S} glow style={{marginBottom:10}}>
+        <div style={{fontSize:10,fontWeight:800,color:S.neon,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:12}}>Neuer Plan</div>
+        {[{k:"wenn",l:"Wenn... (Situation oder Gefühl)",p:"z.B. Einsamkeit abends, Streit, Stress, Langeweile"},{k:"dann",l:"Dann... (eine konkrete Handlung)",p:"z.B. Freund anrufen, kalt duschen, 10 Min rausgehen"}].map(f=>(
+          <div key={f.k} style={{marginBottom:10}}>
+            <div style={{fontSize:9,fontWeight:700,color:S.muted,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:5}}>{f.l}</div>
+            <input value={form[f.k]} onChange={e=>setForm(p=>({...p,[f.k]:e.target.value}))} placeholder={f.p}
+              style={{width:"100%",background:S.input,border:`1px solid ${S.border}`,borderRadius:8,padding:"10px 12px",fontSize:13,color:S.text,fontFamily:"inherit",outline:"none"}}/>
+          </div>
+        ))}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:4}}>
+          <Btn onClick={add} disabled={!form.wenn.trim()||!form.dann.trim()} S={S}>+ Hinzufügen</Btn>
+          <button onPointerDown={()=>haptic.l()} onClick={()=>{setAdding(false);setForm({wenn:"",dann:""});}}
+            style={{padding:"15px",background:"transparent",border:`1px solid ${S.border}`,borderRadius:12,fontSize:11,fontWeight:900,cursor:"pointer",color:S.muted,fontFamily:"inherit",letterSpacing:"0.13em",textTransform:"uppercase"}}>
+            Abbrechen
+          </button>
+        </div>
+      </Card>
+    ):(
+      <button onPointerDown={()=>haptic.l()} onClick={()=>setAdding(true)}
+        style={{width:"100%",padding:"12px",background:"transparent",border:`1px dashed ${S.neonB}`,borderRadius:10,fontSize:10,fontWeight:800,cursor:"pointer",color:S.neon,letterSpacing:"0.1em",textTransform:"uppercase",fontFamily:"inherit"}}>
+        + Neuer Plan
+      </button>
+    )}
+  </div>;
+}
+
+// ─── Monat View ───────────────────────────────────────────────────────────────
+function MonatView({checkins, totalSupps, S}) {
+  const now=new Date(), y=now.getFullYear(), mo=now.getMonth();
+  const dim=new Date(y,mo+1,0).getDate();
+  const dm={};
+  checkins.forEach(c=>{
+    const d=new Date(c.date);
+    if(d.getFullYear()===y&&d.getMonth()===mo){
+      const k=d.getDate();
+      if(!dm[k])dm[k]={r:null,s:0};
+      if(!dm[k].r||c.risk==="hoch")dm[k].r=c.risk;
+      dm[k].s=Math.max(dm[k].s,c.suppsDone||0);
+    }
+  });
+  const off=(new Date(y,mo,1).getDay()+6)%7;
+  const ciD=Object.keys(dm).length;
+  const sdD=Object.values(dm).filter(d=>d.s>=totalSupps).length;
+  const hrD=Object.values(dm).filter(d=>d.r==="hoch").length;
+  function dc(day){
+    const d=dm[day];
+    if(!d) return S.input;
+    if(d.r==="hoch")   return "rgba(255,77,109,0.5)";
+    if(d.r==="mittel") return "rgba(255,193,7,0.45)";
+    return "rgba(0,255,157,0.4)";
+  }
+  return (
+    <Card S={S} style={{marginBottom:10}}>
+      <div style={{fontSize:10,fontWeight:800,color:S.text,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.04em"}}>
+        {now.toLocaleDateString("de-DE",{month:"long",year:"numeric"})}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:14}}>
+        {[
+          {l:"Check-ins",  v:`${Math.round(ciD/dim*100)}%`, c:S.neon},
+          {l:"Volle Supps",v:`${Math.round(sdD/dim*100)}%`, c:S.ok},
+          {l:"Hoch-Risiko",v:hrD, c:hrD>0?S.danger:S.muted},
+        ].map(s=>(
+          <div key={s.l} style={{background:S.input,borderRadius:9,padding:"9px 7px",textAlign:"center",border:`1px solid ${S.border}`}}>
+            <div style={{fontSize:17,fontWeight:900,color:s.c,textShadow:`0 0 8px ${s.c}`}}>{s.v}</div>
+            <div style={{fontSize:7,color:S.muted,marginTop:2,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:6}}>
+        {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
+          <div key={d} style={{fontSize:7,color:S.muted,textAlign:"center",padding:"2px 0"}}>{d}</div>
+        ))}
+        {[...Array(off)].map((_,i)=><div key={`e${i}`}/>)}
+        {[...Array(dim)].map((_,i)=>{
+          const day=i+1, isT=day===now.getDate();
+          return (
+            <div key={day} style={{aspectRatio:"1",borderRadius:3,background:dc(day),border:isT?`1px solid ${S.neon}`:"1px solid transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,color:dm[day]?S.text:S.muted}}>
+              {day}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        {[
+          {c:"rgba(0,255,157,0.4)",l:"Niedrig"},
+          {c:"rgba(255,193,7,0.4)",l:"Mittel"},
+          {c:"rgba(255,77,109,0.5)",l:"Hoch"},
+          {c:S.input,              l:"Kein Check-in"},
+        ].map(l=>(
+          <div key={l.l} style={{display:"flex",alignItems:"center",gap:3}}>
+            <div style={{width:7,height:7,borderRadius:2,background:l.c}}/>
+            <span style={{fontSize:7,color:S.muted}}>{l.l}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [ready,setReady]     = useState(false);
@@ -469,19 +610,36 @@ export default function App() {
     setChecked(prev=>{const n={...prev,[id]:!prev[id]};save("supp_"+DAY(),n);if(Object.values(n).filter(Boolean).length===totalSupps)haptic.s();return n;});
   }
 
+  async function iosSafeDownload(content, type, filename) {
+    const blob = new Blob([content], {type});
+    // iOS Safari: try Web Share API first
+    if (navigator.share && navigator.canShare) {
+      try {
+        const file = new File([blob], filename, {type});
+        if (navigator.canShare({files:[file]})) {
+          await navigator.share({files:[file], title:filename});
+          return;
+        }
+      } catch {}
+    }
+    // Fallback: open in new tab (iOS) or download (desktop)
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement("a"), {href:url, download:filename});
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  }
+
   function exportData(){
     haptic.m();
     const rows=checkins.map(c=>[fmt(c.date),c.mood,c.urge,c.sleep||"",c.energy||"",c.risk||"",c.suppsDone,`"${(c.trigger||"").replace(/"/g,'""')}"`].join(","));
     const csv="Datum,Stimmung,Drang,Schlaf,Energie,Risiko,Supps,Trigger\n"+rows.join("\n");
-    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:"balanx-export.csv"});
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    iosSafeDownload(csv,"text/csv","balanx-export.csv");
   }
 
   function backupJSON(){
     haptic.m();
     const b={version:2,exportedAt:new Date().toISOString(),profile,checkins,relapses,journal,plans,values,supplements:supps};
-    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([JSON.stringify(b,null,2)],{type:"application/json"})),download:`balanx-backup-${new Date().toISOString().split("T")[0]}.json`});
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    iosSafeDownload(JSON.stringify(b,null,2),"application/json",`balanx-backup-${new Date().toISOString().split("T")[0]}.json`);
   }
 
   function importJSON(file){
@@ -513,17 +671,37 @@ export default function App() {
     <div style={{minHeight:"100vh",background:S.bg,fontFamily:"'SF Mono','Fira Code',monospace",color:S.text,maxWidth:430,margin:"0 auto",display:"flex",flexDirection:"column",transition:"background 0.6s"}}>
       <style>{`
         *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+
+        /* Range slider */
         input[type=range]{-webkit-appearance:none;appearance:none}
-        input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:6px;background:${S.neon};box-shadow:0 0 12px ${S.neon}88;border:2px solid rgba(255,255,255,0.15)}
-        textarea,input{font-family:inherit}textarea{resize:none;outline:none;border:none}
+        input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:7px;background:${S.neon};box-shadow:0 0 12px ${S.neon}88;border:2px solid rgba(255,255,255,0.15)}
+
+        /* Inputs */
+        textarea,input{font-family:inherit;-webkit-font-smoothing:antialiased}
+        textarea{resize:none;outline:none;border:none}
+        input{-webkit-appearance:none}
+
+        /* Prevent iOS zoom on input focus */
+        input,textarea,select{font-size:16px !important}
+
+        /* Animations */
         @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
         @keyframes spin{to{transform:rotate(360deg)}}
         @keyframes pulse{0%,100%{opacity:0.45}50%{opacity:1}}
         @keyframes scan{0%{transform:translateY(-100%)}100%{transform:translateY(200vh)}}
         @keyframes sosPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,77,109,0.6)}60%{box-shadow:0 0 0 12px rgba(255,77,109,0)}}
         @keyframes ripple{0%,100%{opacity:0.3}50%{opacity:0.8}}
-        button{transition:transform 0.1s ease}button:active{transform:scale(0.96)}
-        ::-webkit-scrollbar{width:2px}::-webkit-scrollbar-thumb{background:${S.neonB};border-radius:2px}
+
+        /* Scrollable area — iOS momentum */
+        .scroll-area{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+
+        /* Buttons */
+        button{-webkit-tap-highlight-color:transparent;touch-action:manipulation;cursor:pointer}
+        button:active{opacity:0.85}
+
+        /* Scrollbar */
+        ::-webkit-scrollbar{width:2px}
+        ::-webkit-scrollbar-thumb{background:${S.neonB};border-radius:2px}
       `}</style>
 
       {/* Scanline + glow */}
@@ -565,7 +743,7 @@ export default function App() {
         </div>
       )}
 
-      <div style={{flex:1,overflowY:"auto",padding:"26px 16px 92px"}}>
+      <div className="scroll-area" style={{flex:1,padding:"26px 16px 92px"}}>
         {/* Header */}
         <div style={{marginBottom:20,animation:"fadeUp 0.4s ease both"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
@@ -661,8 +839,12 @@ export default function App() {
             {suppSub==="morgen"&&(
               <div style={{animation:"fadeUp 0.4s ease both"}}>
                 <Card S={S} glow>
-                  <div style={{fontSize:9,color:S.muted,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:12}}>Morgen-Protokoll</div>
-                  {[{k:"focus",l:"Fokus heute",p:"Woran liegt der Fokus?"},{k:"ziel",l:"Ein Tagesziel",p:"Eine konkrete Sache..."}].map(f=>(
+                  <div style={{fontSize:9,color:S.muted,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:4}}>Morgen-Protokoll</div>
+                  <div style={{fontSize:10,color:S.muted,marginBottom:14,lineHeight:1.6}}>Starte strukturiert in den Tag. Fülle die Felder aus — KI gibt dir einen kurzen personalisierten Impuls.</div>
+                  {[
+                  {k:"focus",l:"Worauf legst du heute den Fokus?",p:"z.B. ruhig bleiben, Arbeit fertigstellen, Termine durchziehen..."},
+                  {k:"ziel",  l:"Eine konkrete Sache die heute zählt",p:"z.B. heute Abend pünktlich nach Hause, kein Social Media nach 20 Uhr..."}
+                ].map(f=>(
                     <div key={f.k} style={{marginBottom:10}}>
                       <div style={{fontSize:9,fontWeight:700,color:S.muted,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:5}}>{f.l}</div>
                       <textarea rows={2} placeholder={f.p} style={{width:"100%",background:S.input,border:`1px solid ${S.border}`,borderRadius:8,padding:"8px 10px",fontSize:12,lineHeight:1.5,color:S.text}}/>
@@ -707,8 +889,8 @@ export default function App() {
             {checkSub==="check"&&(<>
               {ciStep==="sober"&&(
                 <Card S={S} glow style={{textAlign:"center",padding:"26px 18px"}}>
-                  <div style={{fontSize:11,fontWeight:800,color:S.text,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:5}}>Heute nüchtern?</div>
-                  <div style={{fontSize:10,color:S.muted,marginBottom:18}}>Ehrliche Antwort. Kein Urteil.</div>
+                  <div style={{fontSize:12,fontWeight:800,color:S.text,letterSpacing:"0.04em",marginBottom:4}}>Warst du heute nüchtern?</div>
+                  <div style={{fontSize:10,color:S.muted,marginBottom:18,lineHeight:1.6}}>Ehrliche Antwort — kein Urteil. Bei Nein kommt zuerst ein kurzes Relapse-Review, dann der normale Check-in.</div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                     <button onPointerDown={()=>haptic.s()} onClick={()=>setCiS("form")} style={{padding:"16px",borderRadius:11,border:`1px solid ${S.ok}`,background:`${S.ok}11`,color:S.ok,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit",boxShadow:`0 0 14px ${S.ok}33`}}>✓ Ja</button>
                     <button onPointerDown={()=>haptic.m()} onClick={()=>setCiS("relapse")} style={{padding:"16px",borderRadius:11,border:`1px solid ${S.danger}`,background:`${S.danger}11`,color:S.danger,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit",boxShadow:`0 0 14px ${S.danger}33`}}>Nein</button>
@@ -718,7 +900,10 @@ export default function App() {
 
               {ciStep==="relapse"&&(
                 <div>
-                  <div style={{background:`${S.neonG}`,border:`1px solid ${S.neonB}`,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:11,color:S.text,lineHeight:1.7}}>Kein Vorwurf. Kein Urteil.<br/><span style={{color:S.muted,fontSize:10}}>Was du einträgst, hilft beim nächsten Mal.</span></div>
+                  <div style={{background:`${S.neonG}`,border:`1px solid ${S.neonB}`,borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:11,color:S.text,lineHeight:1.8}}>
+                    <strong style={{color:S.neon}}>Kein Vorwurf. Kein Urteil.</strong><br/>
+                    <span style={{color:S.muted,fontSize:10}}>Je ehrlicher du antwortest, desto besser kann die KI das Muster erkennen — und beim nächsten Mal helfen. Du musst nicht alles ausfüllen.</span>
+                  </div>
                   {["Trigger","Gedanke davor","Emotion","Ort"].map((l,i)=>(
                     <div key={i} style={{marginBottom:10}}>
                       <div style={{fontSize:9,fontWeight:700,color:S.muted,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:5}}>{l}</div>
@@ -740,13 +925,15 @@ export default function App() {
                   <Slider label="Energie"      min={1} max={10} low="Leer"    high="Voll"  value={ci.energy} onChange={v=>setCi(c=>({...c,energy:v}))} color={S.sun}    S={S}/>
                 </Card>
                 <Card S={S} style={{marginBottom:10}}>
-                  <div style={{fontSize:9,fontWeight:700,color:S.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:8}}>Was hat getriggert?</div>
-                  <textarea rows={3} placeholder="z.B. Stress, Langeweile, Schlafmangel..." value={ci.trigger} onChange={e=>setCi(c=>({...c,trigger:e.target.value}))}
+                  <div style={{fontSize:9,fontWeight:700,color:S.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:4}}>Was hat heute Druck gemacht?</div>
+                  <div style={{fontSize:9,color:S.muted,marginBottom:8,lineHeight:1.5}}>Stress, Streit, Einsamkeit, Langeweile, eine bestimmte Situation...</div>
+                  <textarea rows={3} placeholder="Was hat heute Druck gemacht? z.B. Stress bei der Arbeit, Streit, Einsamkeit, Langeweile, Schlafmangel..." value={ci.trigger} onChange={e=>setCi(c=>({...c,trigger:e.target.value}))}
                     style={{width:"100%",background:S.input,borderRadius:7,padding:"9px 11px",fontSize:13,lineHeight:1.5,color:S.text}}/>
                 </Card>
                 <Card S={S} style={{marginBottom:14}}>
-                  <div style={{fontSize:9,fontWeight:700,color:S.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:8}}>Kontext (optional)</div>
-                  <textarea rows={2} placeholder="Schlaf, Essen, besonderes Ereignis..." value={ci.context} onChange={e=>setCi(c=>({...c,context:e.target.value}))}
+                  <div style={{fontSize:9,fontWeight:700,color:S.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:4}}>Zusätzlicher Kontext</div>
+                  <div style={{fontSize:9,color:S.muted,marginBottom:8,lineHeight:1.5}}>Optional — hilft der KI. z.B. schlechter Schlaf, wenig gegessen, bestimmte Person getroffen.</div>
+                  <textarea rows={2} placeholder="Optional: Wie war dein Schlaf? Hast du gegessen? Was ist heute noch passiert?" value={ci.context} onChange={e=>setCi(c=>({...c,context:e.target.value}))}
                     style={{width:"100%",background:S.input,borderRadius:7,padding:"9px 11px",fontSize:13,lineHeight:1.5,color:S.text}}/>
                 </Card>
                 <div style={{fontSize:9,color:S.muted,textAlign:"center",marginBottom:10}}>◎ {doneSupps}/{totalSupps} Supplements · {profile.kiModus} Modus</div>
@@ -779,8 +966,12 @@ export default function App() {
             {checkSub==="journal"&&(
               <div style={{animation:"fadeUp 0.4s ease both"}}>
                 <Card S={S} glow style={{marginBottom:14}}>
-                  <div style={{fontSize:9,color:S.muted,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:12}}>Heute · 30 Sekunden</div>
-                  {[{id:"hard",l:"Was war schwer?",p:"Kurz. Ehrlich.",c:"#ff6b85"},{id:"helped",l:"Was hat geholfen?",p:"Auch kleine Dinge.",c:S.ok}].map(q=>(
+                  <div style={{fontSize:9,color:S.muted,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:4}}>Tages-Journal</div>
+                  <div style={{fontSize:10,color:S.muted,marginBottom:12,lineHeight:1.6}}>2 Fragen, ca. 30 Sekunden. Wird täglich gespeichert.</div>
+                  {[
+                    {id:"hard",l:"Was war heute schwer?",p:"Kurz und ehrlich. Was hat dich gefordert oder belastet?",c:"#ff6b85"},
+                    {id:"helped",l:"Was hat geholfen oder gut getan?",p:"Auch kleine Dinge zählen. z.B. Spaziergang, Gespräch, Musik.",c:S.ok}
+                  ].map(q=>(
                     <div key={q.id} style={{marginBottom:11}}>
                       <div style={{fontSize:10,fontWeight:800,color:q.c,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>{q.l}</div>
                       <textarea rows={2} placeholder={q.p} value={jForm[q.id]} onChange={e=>setJForm(p=>({...p,[q.id]:e.target.value}))}
@@ -802,26 +993,7 @@ export default function App() {
 
             {checkSub==="plans"&&(
               <div style={{animation:"fadeUp 0.4s ease both"}}>
-                {plans.length===0&&<Card S={S} style={{marginBottom:12}}>
-                  <div style={{fontSize:9,color:S.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:8}}>Vorschläge</div>
-                  {[["Einsamkeit","Freund anrufen"],["Suchtdruck","Dusche + Walk"],["Stress","Musik + draußen"],["Langeweile","Workout"]].map(([w,d],i)=>(
-                    <div key={i} onClick={()=>{haptic.l();const n=[...plans,{id:Date.now(),wenn:w,dann:d}];setPlans(n);save("wenn_dann",n);}} style={{display:"flex",gap:8,padding:"8px 0",borderBottom:i<3?`1px solid ${S.border}`:"none",cursor:"pointer"}}>
-                      <span style={{fontSize:11,color:S.cyan}}>Wenn {w}</span><span style={{fontSize:11,color:S.muted}}>→</span><span style={{fontSize:11,color:S.text}}>{d}</span>
-                    </div>
-                  ))}
-                </Card>}
-                {plans.map(p=>(
-                  <Card key={p.id} S={S} glow style={{marginBottom:8,padding:"11px 14px"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{flex:1,fontSize:11,lineHeight:1.6}}><span style={{color:S.muted,fontSize:9,textTransform:"uppercase"}}>Wenn </span><span style={{color:S.cyan,fontWeight:700}}>{p.wenn}</span><span style={{color:S.muted}}> → </span><span style={{color:S.text,fontWeight:700}}>{p.dann}</span></div>
-                      <button onClick={()=>{const n=plans.filter(x=>x.id!==p.id);setPlans(n);save("wenn_dann",n);}} style={{width:24,height:24,borderRadius:5,border:"1px solid rgba(255,77,109,0.3)",background:"rgba(255,77,109,0.08)",color:S.danger,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                    </div>
-                  </Card>
-                ))}
-                <button onPointerDown={()=>haptic.l()} onClick={()=>{const w=prompt("Wenn...");if(!w)return;const d=prompt("Dann...");if(!d)return;const n=[...plans,{id:Date.now(),wenn:w,dann:d}];setPlans(n);save("wenn_dann",n);}}
-                  style={{width:"100%",padding:"12px",background:"transparent",border:`1px dashed ${S.neonB}`,borderRadius:10,fontSize:10,fontWeight:800,cursor:"pointer",color:S.neon,letterSpacing:"0.1em",textTransform:"uppercase",fontFamily:"inherit"}}>
-                  + Neuer Plan
-                </button>
+                <PlaeneEditor plans={plans} setPlans={setPlans} save={save} S={S}/>
               </div>
             )}
           </div>
@@ -839,39 +1011,15 @@ export default function App() {
               ))}
             </div>
 
-            {vlSub==="monat"&&(()=>{
-              const now=new Date(),y=now.getFullYear(),mo=now.getMonth();
-              const dim=new Date(y,mo+1,0).getDate();
-              const dm={};
-              checkins.forEach(c=>{const d=new Date(c.date);if(d.getFullYear()===y&&d.getMonth()===mo){const k=d.getDate();if(!dm[k])dm[k]={r:null,s:0};if(!dm[k].r||c.risk==="hoch")dm[k].r=c.risk;dm[k].s=Math.max(dm[k].s,c.suppsDone||0);}});
-              const off=(new Date(y,mo,1).getDay()+6)%7;
-              const ciD=Object.keys(dm).length,sdD=Object.values(dm).filter(d=>d.s>=totalSupps).length,hrD=Object.values(dm).filter(d=>d.r==="hoch").length;
-              function dc(day){const d=dm[day];if(!d)return S.input;if(d.r==="hoch")return"rgba(255,77,109,0.5)";if(d.r==="mittel")return"rgba(255,193,7,0.45)";return"rgba(0,255,157,0.4)";}
-              return<div>
-                <Card S={S} style={{marginBottom:10}}>
-                  <div style={{fontSize:10,fontWeight:800,color:S.text,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.04em"}}>{now.toLocaleDateString("de-DE",{month:"long",year:"numeric"})}</div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:14}}>
-                    {[{l:"Check-ins",v:`${Math.round(ciD/dim*100)}%`,c:S.neon},{l:"Volle Supps",v:`${Math.round(sdD/dim*100)}%`,c:S.ok},{l:"Hoch-Risiko",v:hrD,c:hrD>0?S.danger:S.muted}].map(s=>(
-                      <div key={s.l} style={{background:S.input,borderRadius:9,padding:"9px 7px",textAlign:"center",border:`1px solid ${S.border}`}}>
-                        <div style={{fontSize:17,fontWeight:900,color:s.c,textShadow:`0 0 8px ${s.c}`}}>{s.v}</div>
-                        <div style={{fontSize:7,color:S.muted,marginTop:2,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>{s.l}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:6}}>
-                    {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=><div key={d} style={{fontSize:7,color:S.muted,textAlign:"center",padding:"2px 0"}}>{d}</div>)}
-                    {[...Array(off)].map((_,i)=><div key={`e${i}`}/>)}
-                    {[...Array(dim)].map((_,i)=>{const day=i+1;const isT=day===now.getDate();return<div key={day} style={{aspectRatio:"1",borderRadius:3,background:dc(day),border:isT?`1px solid ${S.neon}`:"1px solid transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,color:dm[day]?S.text:S.muted}}>{day}</div>;})}
-                  </div>
-                  <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                    {[{c:"rgba(0,255,157,0.4)",l:"Niedrig"},{c:"rgba(255,193,7,0.4)",l:"Mittel"},{c:"rgba(255,77,109,0.5)",l:"Hoch"},{c:S.input,l:"Kein Check-in"}].map(l=><div key={l.l} style={{display:"flex",alignItems:"center",gap:3}}><div style={{width:7,height:7,borderRadius:2,background:l.c}}/><span style={{fontSize:7,color:S.muted}}>{l.l}</span></div>)}
-                  </div>
-                </Card>
-              </div>;
-            })()}
+            {vlSub==="monat"&&<MonatView checkins={checkins} totalSupps={totalSupps} S={S}/>}
 
             {vlSub==="verlauf"&&(<>
-              {checkins.length===0?<Card S={S} style={{textAlign:"center",padding:"50px 20px",color:S.muted}}><div style={{fontSize:26,opacity:0.3,marginBottom:10}}>▲</div><div style={{fontWeight:700,textTransform:"uppercase",marginBottom:5}}>Keine Daten</div><div style={{fontSize:11}}>Mach deinen ersten Check-in.</div></Card>:<>
+              {checkins.length===0
+                ? <Card S={S} style={{textAlign:"center",padding:"50px 20px",color:S.muted}}>
+                    <div style={{fontSize:26,opacity:0.3,marginBottom:10}}>▲</div>
+                    <div style={{fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Noch keine Daten</div>
+                    <div style={{fontSize:11,lineHeight:1.7}}>Mach deinen ersten Check-in im Check-Tab.<br/>Deine Daten erscheinen dann hier.</div>
+                  </Card>:<>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
                   {[{l:"Ø Stimmung",v:avgMood,c:S.cyan},{l:"Ø Drang",v:avgUrge,c:S.danger},{l:"Rückfälle",v:relapses.length,c:S.sun}].map(s=>(
                     <Card key={s.l} S={S} style={{textAlign:"center",padding:"13px 7px",marginBottom:0}}>
@@ -904,7 +1052,10 @@ export default function App() {
                       {fwL?<Spin S={S}/>:"▶ Scan"}
                     </button>
                   </div>
-                  {fwRes?<div style={{fontSize:12,lineHeight:1.7,borderTop:`1px solid ${S.border}`,paddingTop:10}} dangerouslySetInnerHTML={{__html:md(fwRes,S.neon)}}/>:<div style={{fontSize:11,color:S.muted}}>{checkins.length<3?"Mind. 3 Check-ins nötig.":"Noch nicht gelaufen."}</div>}
+                  {fwRes
+                    ? <div style={{fontSize:12,lineHeight:1.7,borderTop:`1px solid ${S.border}`,paddingTop:10}} dangerouslySetInnerHTML={{__html:md(fwRes,S.neon)}}/>
+                    : <div style={{fontSize:11,color:S.muted,lineHeight:1.6}}>{checkins.length<3?"Mind. 3 Check-ins nötig — danach analysiert das System täglich automatisch.":"Klick auf Scan für eine aktuelle Analyse."}</div>
+                  }
                 </Card>
 
                 {/* Muster-Analyse */}
@@ -916,8 +1067,12 @@ export default function App() {
                     </button>
                   </div>
                   {patErr&&<ErrBox msg={patErr} S={S}/>}
-                  {checkins.length<2&&<div style={{fontSize:11,color:S.muted}}>Mind. 2 Check-ins nötig.</div>}
-                  {patRes&&<div style={{fontSize:12,lineHeight:1.7,borderTop:`1px solid ${S.border}`,paddingTop:10}} dangerouslySetInnerHTML={{__html:md(patRes,S.neon)}}/>}
+                  {checkins.length<2
+                    ? <div style={{fontSize:11,color:S.muted,lineHeight:1.6}}>Mind. 2 Check-ins nötig — danach siehst du hier deine Trigger-Muster.</div>
+                    : patRes
+                      ? <div style={{fontSize:12,lineHeight:1.7,borderTop:`1px solid ${S.border}`,paddingTop:10}} dangerouslySetInnerHTML={{__html:md(patRes,S.neon)}}/>
+                      : <div style={{fontSize:11,color:S.muted}}>Klick auf Scan um Muster in deinen Check-ins zu finden.</div>
+                  }
                 </Card>
 
                 <div style={{fontSize:9,fontWeight:700,color:S.muted,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:7}}>Letzte Einträge</div>
@@ -959,7 +1114,7 @@ export default function App() {
               <div style={{animation:"fadeUp 0.4s ease both"}}>
                 <Card S={S} glow style={{marginBottom:14}}>
                   <div style={{fontSize:11,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:4}}>Deine Werte</div>
-                  <div style={{fontSize:9,color:S.muted,marginBottom:12,lineHeight:1.6}}>Bis zu 6 — erscheinen im SOS-Screen.</div>
+                  <div style={{fontSize:10,color:S.muted,marginBottom:12,lineHeight:1.6}}>Wähle bis zu 6 Dinge, für die du nüchtern bleiben willst. Diese erscheinen im SOS-Screen — genau dann wenn du sie brauchst.</div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
                     {["Familie","Gesundheit","Freiheit","Geld","Selbstrespekt","Zukunft","Klarheit","Beziehungen","Sport","Würde"].map(v=>{const sel=values.includes(v);return(
                       <button key={v} onPointerDown={()=>haptic.l()} onClick={()=>{const n=sel?values.filter(x=>x!==v):(values.length<6?[...values,v]:values);setValues(n);save("user_values",n);}}
@@ -979,16 +1134,26 @@ export default function App() {
                 <button onPointerDown={()=>haptic.l()} onClick={()=>setSett(true)} style={{background:"transparent",border:`1px solid ${S.border}`,borderRadius:5,padding:"3px 7px",fontSize:8,cursor:"pointer",color:S.muted,fontFamily:"inherit"}}>ändern</button>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:14}}>
-                {[{id:"analyse",l:"Analyse",icon:"◈"},{id:"entscheidung",l:"Entscheid",icon:"⊕"},{id:"impuls",l:"Impuls",icon:"⚡"},{id:"reframe",l:"Reframe",icon:"⟳"}].map(m=>(
+                {[
+                  {id:"analyse",    l:"Analysieren",  icon:"◈", hint:"Text verstehen"},
+                  {id:"entscheidung",l:"Entscheiden", icon:"⊕", hint:"Pro & Contra"},
+                  {id:"impuls",     l:"Impuls stoppen",icon:"⚡",hint:"Sofort-Hilfe"},
+                  {id:"reframe",    l:"Umdenken",     icon:"⟳", hint:"Gedanken neu formulieren"},
+                ].map(m=>(
                   <button key={m.id} onPointerDown={()=>haptic.l()} onClick={()=>{setDenkM(m.id);setDenkOut("");setDenkErr("");}}
-                    style={{padding:"11px 5px",borderRadius:10,border:`1px solid ${denkM===m.id?S.neon:S.border}`,background:denkM===m.id?S.neonG:"transparent",color:denkM===m.id?S.neon:S.muted,fontSize:8,fontWeight:800,cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",gap:4,letterSpacing:"0.1em",textTransform:"uppercase",boxShadow:denkM===m.id?`0 0 14px ${S.neonG}`:"none",transition:"all 0.2s"}}>
-                    <span style={{fontSize:15}}>{m.icon}</span>{m.l}
+                    style={{padding:"11px 5px",borderRadius:10,border:`1px solid ${denkM===m.id?S.neon:S.border}`,background:denkM===m.id?S.neonG:"transparent",color:denkM===m.id?S.neon:S.muted,fontSize:8,fontWeight:800,cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",gap:3,letterSpacing:"0.08em",textTransform:"uppercase",boxShadow:denkM===m.id?`0 0 14px ${S.neonG}`:"none",transition:"all 0.2s"}}>
+                    <span style={{fontSize:15}}>{m.icon}</span>
+                    <span style={{fontWeight:900}}>{m.l}</span>
+                    <span style={{fontSize:7,opacity:0.7,letterSpacing:"0.04em",textTransform:"none",fontWeight:400}}>{m.hint}</span>
                   </button>
                 ))}
               </div>
-              {denkM==="reframe"&&<Card S={S} style={{marginBottom:9,padding:"9px 13px"}}><div style={{fontSize:10,color:S.muted,lineHeight:1.7}}>Schreib den Gedanken genau so auf, wie er kommt.<br/><span style={{color:S.neon}}>Kein Schönreden. Nur Präzision.</span></div></Card>}
+              {denkM==="reframe"&&<Card S={S} style={{marginBottom:9,padding:"9px 13px"}}>
+                <div style={{fontSize:10,color:S.text,lineHeight:1.7,fontWeight:700,marginBottom:3}}>Wie funktioniert Reframe?</div>
+                <div style={{fontSize:10,color:S.muted,lineHeight:1.7}}>Schreib den negativen Gedanken genau so auf, wie er in deinem Kopf klingt — nicht abgemildert. Die KI analysiert das Muster dahinter und formuliert ihn realistischer um. Kein positives Denken, nur mehr Präzision.<br/><span style={{color:S.neon}}>Beispiel: "Ich schaffe das nie." oder "Alle geben irgendwann auf."</span></div>
+              </Card>}
               <Card S={S} glow={denkIn.length>0} style={{marginBottom:9}}>
-                <textarea rows={6} placeholder={{analyse:"Text oder Frage einfügen...",entscheidung:"Welche Entscheidung steht an?",impuls:"Was ist gerade los?",reframe:"Welcher Gedanke dreht sich im Kreis?"}[denkM]} value={denkIn} onChange={e=>{setDenkIn(e.target.value);setDenkOut("");}}
+                <textarea rows={6} placeholder={{analyse:"Text, Artikel oder Situation hier einfügen — KI bringt es auf den Punkt.",entscheidung:"Beschreib die Entscheidung und was du schon weißt. z.B. Soll ich den Job wechseln? Ich habe Angebot X...",impuls:"Was passiert gerade? Schreib es raus — ohne Filter. z.B. Ich will jetzt gerade...",reframe:"Welcher Gedanke dreht sich im Kreis? Genau so aufschreiben wie er kommt. z.B. Ich schaffe das nie..."}[denkM]} value={denkIn} onChange={e=>{setDenkIn(e.target.value);setDenkOut("");}}
                   style={{width:"100%",background:S.input,borderRadius:7,padding:"9px 11px",fontSize:13,lineHeight:1.6,color:S.text}}/>
               </Card>
               {denkErr&&<ErrBox msg={denkErr} S={S}/>}
@@ -1002,7 +1167,7 @@ export default function App() {
       </div>
 
       {/* Tab Bar */}
-      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:`${S.card}f5`,backdropFilter:"blur(14px)",borderTop:`1px solid ${S.neonB}`,boxShadow:`0 -10px 36px ${S.neonG}`,display:"flex",paddingBottom:"env(safe-area-inset-bottom,0)",transition:"all 0.5s"}}>
+      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:`${S.card}f8`,backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)",borderTop:`1px solid ${S.neonB}`,boxShadow:`0 -10px 36px ${S.neonG}`,display:"flex",paddingBottom:"max(env(safe-area-inset-bottom),8px)",transition:"all 0.5s",zIndex:100}}>
         {TABS.map(t=>(
           <button key={t.id} onPointerDown={()=>haptic.l()} onClick={()=>setTab(t.id)}
             style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"12px 0 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:4,position:"relative"}}>
